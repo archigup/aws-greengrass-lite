@@ -15,29 +15,30 @@
 #define MAX_WRITE_BUFFER_SIZE 10000
 static GglBuffer config_server = GGL_STR("/aws/ggl/ggconfigd");
 
-void get_value_from_db(
-    GglList key_path, GglAlloc *the_allocator, char *return_string
-) {
+GglError get_value_from_db(GglList key_path, GglBuffer *value) {
     GglMap params = GGL_MAP({ GGL_STR("key_path"), GGL_OBJ(key_path) }, );
     GglObject result;
+    GglBumpAlloc alloc = ggl_bump_alloc_init(*value);
 
-    GglError error = ggl_call(
-        config_server, GGL_STR("read"), params, NULL, the_allocator, &result
+    GglError ret = ggl_call(
+        config_server, GGL_STR("read"), params, NULL, &alloc.alloc, &result
     );
-    if (error != GGL_ERR_OK) {
-        GGL_LOGE("database-helper", "read failed. Error %d", error);
-    } else {
-        memcpy(return_string, result.buf.data, result.buf.len);
-
-        if (result.type == GGL_TYPE_BUF) {
-            GGL_LOGI(
-                "database-helper",
-                "read value: %.*s",
-                (int) result.buf.len,
-                (char *) result.buf.data
-            );
-        }
+    if (ret != GGL_ERR_OK) {
+        GGL_LOGE("database-helper", "Read failed. Error %d", ret);
+        return ret;
     }
+    if (result.type != GGL_TYPE_BUF) {
+        GGL_LOGE("database-helper", "Result is not a string");
+        return GGL_ERR_CONFIG;
+    }
+    GGL_LOGI(
+        "database-helper",
+        "read value: %.*s",
+        (int) result.buf.len,
+        (char *) result.buf.data
+    );
+    *value = result.buf;
+    return GGL_ERR_OK;
 }
 
 GglError save_value_to_db(GglList key_path, GglObject value) {

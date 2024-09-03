@@ -11,7 +11,7 @@ typedef struct {
     char *claim_cert_path;
     char *claim_key_path;
     char *template_name;
-    char *template_parameters;
+    char *template_params;
     char *data_endpoint;
     char *root_ca_path;
     char *iotcored_path;

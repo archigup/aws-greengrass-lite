@@ -29,13 +29,12 @@ static char global_register_thing_url[128] = { 0 };
 static char global_register_thing_accept_url[128] = { 0 };
 static char global_register_thing_reject_url[128] = { 0 };
 static char template_param_buffer_alloc[TEMPLATE_PARAM_BUFFER_SIZE];
-static pid_t global_iotcored_pid;
 
-static uint8_t big_buffer_for_bump[4096];
 GglObject csr_payload_json_obj;
-char *global_cert_file_path;
+int global_root_path_fd;
 
-static GglBuffer iotcored = GGL_STR("iotcoredfleet");
+// TODO: Replace with alternative socket dir
+static GglBuffer iotcored = GGL_STR("iotcored-fleet-prov");
 
 static const char *certificate_response_url
     = "$aws/certificates/create-from-csr/json/accepted";
@@ -117,33 +116,11 @@ static int request_thing_name(GglObject *cert_owner_gg_obj) {
     return GGL_ERR_OK;
 }
 
-static int set_global_values(pid_t iotcored_pid) {
+static int set_global_values(void) {
     GglBumpAlloc the_allocator
         = ggl_bump_alloc_init(GGL_BUF(big_buffer_for_bump));
 
     static char *template_url_prefix = "$aws/provisioning-templates/";
-    static char template_name_local_buf[128] = { 0 };
-    global_iotcored_pid = iotcored_pid;
-
-    // Fetch Template Name from db
-    // TODO: Use args passed from entry.c
-    get_value_from_db(
-        GGL_LIST(
-            GGL_OBJ_STR("services"),
-            GGL_OBJ_STR("aws.greengrass.fleet_provisioning"),
-            GGL_OBJ_STR("configuration"),
-            GGL_OBJ_STR("templateName")
-        ),
-        &the_allocator.alloc,
-        template_name_local_buf
-    );
-
-    if (strlen(template_name_local_buf) == 0) {
-        GGL_LOGE(
-            "fleet-provisioning", "Failed to fetch template name from database"
-        );
-        return GGL_ERR_FAILURE;
-    }
 
     strncat(
         global_register_thing_url,
@@ -173,27 +150,8 @@ static int set_global_values(pid_t iotcored_pid) {
         global_register_thing_url,
         strlen(global_register_thing_url)
     );
-    strncat(global_register_thing_reject_url, "/rejected", strlen("/accepted"));
+    strncat(global_register_thing_reject_url, "/rejected", strlen("/rejected"));
 
-    // Fetch Template Parameters
-    // TODO: Use args passed from entry.c
-    get_value_from_db(
-        GGL_LIST(
-            GGL_OBJ_STR("services"),
-            GGL_OBJ_STR("aws.greengrass.fleet_provisioning"),
-            GGL_OBJ_STR("configuration"),
-            GGL_OBJ_STR("templateParams")
-        ),
-        &the_allocator.alloc,
-        template_param_buffer_alloc
-    );
-
-    GGL_LOGD(
-        "fleet-provisioning",
-        "Template parameters Fetched: %.*s",
-        (int) strlen(template_param_buffer_alloc),
-        template_param_buffer_alloc
-    );
     return GGL_ERR_OK;
 }
 
@@ -284,14 +242,6 @@ static GglError subscribe_callback(void *ctx, uint32_t handle, GglObject data) {
             GglError ret = ggl_write_exact(fd, val->buf);
             close(fd);
 
-            save_value_to_db(
-                GGL_LIST(GGL_OBJ_STR("system")),
-                GGL_OBJ_MAP({ GGL_STR("certificateFilePath"),
-                              GGL_OBJ((GglBuffer
-                              ) { .data = (uint8_t *) global_cert_file_path,
-                                  .len = strlen(global_cert_file_path) }) })
-            );
-
             if (ret != GGL_ERR_OK) {
                 return ret;
             }
@@ -353,9 +303,6 @@ static GglError subscribe_callback(void *ctx, uint32_t handle, GglObject data) {
                 "fleet-provisioning",
                 "Process Complete, Your device is now provisioned"
             );
-            exec_kill_process(global_iotcored_pid);
-
-            // TODO: Find a way to terminate cleanly with iotcored
         }
     }
 
@@ -373,12 +320,10 @@ static GglError subscribe_callback(void *ctx, uint32_t handle, GglObject data) {
     return GGL_ERR_OK;
 }
 
-GglError make_request(
-    char *csr_as_string, char *cert_file_path, pid_t iotcored_pid
-) {
-    global_cert_file_path = cert_file_path;
+GglError make_request(char *csr_as_string, int root_path_fd) {
+    global_root_path_fd = root_path_fd;
 
-    int ret_db = set_global_values(iotcored_pid);
+    int ret_db = set_global_values();
     if (ret_db != GGL_ERR_OK) {
         return GGL_ERR_FAILURE;
     }
@@ -418,6 +363,7 @@ GglError make_request(
         "fleet-provisioning", "Successfully set csr accepted subscription."
     );
 
+    // TODO: Remove this
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
     ggl_sleep(2);
 
@@ -453,6 +399,7 @@ GglError make_request(
         "fleet-provisioning", "Successfully set csr rejected subscription."
     );
 
+    // TODO: Remove this
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
     ggl_sleep(2);
 
@@ -488,6 +435,7 @@ GglError make_request(
         "fleet-provisioning", "Successfully set thing accepted subscription."
     );
 
+    // TODO: Remove this
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
     ggl_sleep(2);
 
@@ -513,6 +461,7 @@ GglError make_request(
         { GGL_STR("payload"), GGL_OBJ(csr_buf) },
     );
 
+    // TODO: Remove this
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
     ggl_sleep(5);
 
@@ -529,6 +478,7 @@ GglError make_request(
         return GGL_ERR_FAILURE;
     }
 
+    // TODO: Remove this
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
     ggl_sleep(300);
     return GGL_ERR_OK;

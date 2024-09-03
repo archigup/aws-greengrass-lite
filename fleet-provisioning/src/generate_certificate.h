@@ -5,15 +5,8 @@
 #ifndef FLEET_PROV_GENERATE_CERTIFICATE_H
 #define FLEET_PROV_GENERATE_CERTIFICATE_H
 
-#include <openssl/types.h>
-#include <openssl/x509.h>
+#include <ggl/error.h>
 
-void generate_key_files(
-    EVP_PKEY *pkey,
-    X509_REQ *req,
-    char *private_file_path,
-    char *public_file_path,
-    char *csr_file_path
-);
+GglError generate_key_files(int root_path_fd);
 
 #endif

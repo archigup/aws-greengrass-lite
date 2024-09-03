@@ -8,8 +8,9 @@
 #include <sys/types.h>
 #include <ggl/error.h>
 
-GglError make_request(
-    char *csr_as_string, char *cert_file_path, pid_t iotcored_pid
-);
+// https://docs.aws.amazon.com/iot/latest/apireference/API_DescribeProvisioningTemplate.html
+#define MAX_TEMPLATE_NAME_LEN 36
+
+GglError make_request(char *csr_as_string, int root_path_fd);
 
 #endif

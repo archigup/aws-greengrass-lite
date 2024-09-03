@@ -90,13 +90,11 @@ GglError exec_command_without_child_wait(char *args[], pid_t *child_pid) {
 GglError exec_kill_process(pid_t process_id) {
     // Send the SIGTERM signal to the process
 
-    // NOLINTBEGIN(concurrency-mt-unsafe, readability-else-after-return)
     if (kill(process_id, SIGTERM) == -1) {
         GGL_LOGE(
             "exec-lib",
-            "Failed to kill the process id %d : %s errno:%d.",
+            "Failed to kill the process id %d: %d.",
             process_id,
-            strerror(errno),
             errno
         );
         return GGL_ERR_FAILURE;
@@ -111,42 +109,38 @@ GglError exec_kill_process(pid_t process_id) {
         if (wait_pid == -1) {
             if (errno == ECHILD) {
                 GGL_LOGE(
-                    "exec-lib",
-                    "Process %d has already terminated.\n",
-                    process_id
-                );
-                break;
-            } else {
-                GGL_LOGE(
-                    "exec-lib",
-                    "Error waiting for process %d: %s (errno: %d)\n",
-                    process_id,
-                    strerror(errno),
-                    errno
+                    "exec-lib", "Process %d has already terminated.", process_id
                 );
                 break;
             }
+
+            GGL_LOGE(
+                "exec-lib",
+                "Error waiting for process %d: %d",
+                process_id,
+                errno
+            );
+            break;
         }
 
         if (WIFEXITED(status)) {
             GGL_LOGE(
                 "exec-lib",
-                "Process %d exited with status %d.\n",
+                "Process %d exited with status %d.",
                 process_id,
                 WEXITSTATUS(status)
             );
         } else if (WIFSIGNALED(status)) {
             GGL_LOGE(
                 "exec-lib",
-                "Process %d was killed by signal %d.\n",
+                "Process %d was killed by signal %d.",
                 process_id,
                 WTERMSIG(status)
             );
         }
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
-    GGL_LOGI("exec-lib", "Process %d has terminated.\n", process_id);
+    GGL_LOGI("exec-lib", "Process %d has terminated.", process_id);
 
-    // NOLINTEND(concurrency-mt-unsafe, readability-else-after-return)
     return GGL_ERR_OK;
 }

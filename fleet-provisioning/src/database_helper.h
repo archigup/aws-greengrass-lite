@@ -9,8 +9,7 @@
 #include <ggl/error.h>
 #include <ggl/object.h>
 
-void get_value_from_db(
-    GglList key_path, GglAlloc *the_allocator, char *return_string
-);
+GglError get_value_from_db(GglList key_path, GglBuffer *value);
 GglError save_value_to_db(GglList key_path, GglObject value);
+
 #endif

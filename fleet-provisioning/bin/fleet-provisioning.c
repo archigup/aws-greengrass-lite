@@ -2,45 +2,53 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#define _GNU_SOURCE
+
 #include "fleet-provisioning.h"
 #include <argp.h>
 #include <ggl/error.h>
 #include <ggl/log.h>
+#include <ggl/object.h>
+#include <ggl/vector.h>
 #include <string.h>
+#include <stdint.h>
 
-static char doc[] = "fleet provisioner -- Executable to automatically "
-                    "provision the device to AWS IOT core";
-static const char COMPONENT_NAME[] = "fleet-provisioning";
+static char doc[] = "fleet-provisioning -- Configure Greengrass with AWS IoT "
+                    "Fleet Provisioning";
 
-static struct argp_option opts[] = {
-    { "claim-key",
-      'k',
-      "path",
-      0,
-      "Path to key for client claim private certificate",
-      0 },
-    { "claim-cert",
-      'c',
-      "path",
-      0,
-      "Path to key for client claim certificate",
-      0 },
-    { "template-name",
-      't',
-      "name",
-      0,
-      "AWS fleet provisioning template name",
-      0 },
-    { "template-param",
-      'p',
-      "json",
-      0,
-      "[optional] Fleet Prov additional parameters",
-      0 },
-    { "data-endpoint", 'e', "name", 0, "AWS IoT Core data endpoint", 0 },
-    { "root-ca-path", 'r', "path", 0, "Path to key for client certificate", 0 },
-    { 0 }
-};
+static struct argp_option opts[]
+    = { { "claim-key",
+          'k',
+          "path",
+          OPTION_ARG_OPTIONAL,
+          "Path to key for claim certificate",
+          0 },
+        { "claim-cert", 'c', "path", 0, "Path to claim certificate", 0 },
+        { "template-name",
+          't',
+          "name",
+          OPTION_ARG_OPTIONAL,
+          "AWS IoT Fleet Provisioning template name",
+          0 },
+        { "template-param",
+          'p',
+          "json",
+          OPTION_ARG_OPTIONAL,
+          "Additional template parameters",
+          0 },
+        { "data-endpoint",
+          'e',
+          "name",
+          OPTION_ARG_OPTIONAL,
+          "AWS IoT Core data endpoint",
+          0 },
+        { "root-ca-path",
+          'r',
+          "path",
+          OPTION_ARG_OPTIONAL,
+          "Path to AWS IoT Core CA PEM",
+          0 },
+        { 0 } };
 
 static error_t arg_parser(int key, char *arg, struct argp_state *state) {
     FleetProvArgs *args = state->input;
@@ -64,7 +72,6 @@ static error_t arg_parser(int key, char *arg, struct argp_state *state) {
         args->root_ca_path = arg;
         break;
     case ARGP_KEY_END:
-        // ALL keys have defaults further in.
         break;
     default:
         return ARGP_ERR_UNKNOWN;
@@ -74,29 +81,39 @@ static error_t arg_parser(int key, char *arg, struct argp_state *state) {
 
 static struct argp argp = { opts, arg_parser, 0, doc, 0, 0, 0 };
 
-static void parse_path(char **argv, char *path) {
-    // The passed in buffer is expected to be initialzed already, No need to
-    // worry about null termination
-    //  NOLINTNEXTLINE(bugprone-not-null-terminated-result)
-    memcpy(path, argv[0], strlen(argv[0]) - strlen(COMPONENT_NAME));
-    strncat(path, "iotcored", strlen("iotcored"));
-
-    GGL_LOGD(
-        "fleet-provisioning", "iotcored path: %.*s", (int) strlen(path), path
-    );
+// includes trailing slash if any (path searches become "")
+static GglBuffer get_bin_path(char *argv0) {
+    size_t len = strlen(argv0);
+    char *slash = memrchr(argv0, '/', len);
+    len = (slash == NULL) ? 0 : ((size_t) (slash - argv0) + 1);
+    return (GglBuffer) { .data = (uint8_t *) argv0, .len = len };
 }
 
 int main(int argc, char **argv) {
     static FleetProvArgs args = { 0 };
-    static char iotcored_path[4097] = { 0 };
 
-    parse_path(argv, iotcored_path);
+    if (argc < 1) {
+        return 1;
+    }
+
+    GglBuffer bin_path = get_bin_path(argv[0]);
+
+    // TODO: properly size this buffer
+    static char iotcored_path[1025] = { 0 };
+    GglByteVec iotcored_path_vec = GGL_BYTE_VEC(iotcored_path);
+    GglError ret = ggl_byte_vec_append(&iotcored_path_vec, bin_path);
+    ggl_byte_vec_append_cont(&ret, &iotcored_path_vec, GGL_STR("iotcored"));
+    ggl_byte_vec_push_cont(&ret, &iotcored_path_vec, '\0');
+    if (ret != GGL_ERR_OK) {
+        GGL_LOGE("fleet-provisioning", "Failed to build iotcored path.");
+        return 1;
+    }
 
     // NOLINTNEXTLINE(concurrency-mt-unsafe)
     argp_parse(&argp, argc, argv, 0, 0, &args);
     args.iotcored_path = iotcored_path;
 
-    GglError ret = run_fleet_prov(&args);
+    ret = run_fleet_prov(&args);
     if (ret != GGL_ERR_OK) {
         return 1;
     }
