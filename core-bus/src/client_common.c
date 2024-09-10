@@ -6,12 +6,14 @@
 #include "object_serde.h"
 #include "types.h"
 #include <assert.h>
+#include <fcntl.h>
 #include <ggl/buffer.h>
 #include <ggl/defer.h>
 #include <ggl/error.h>
 #include <ggl/eventstream/decode.h>
 #include <ggl/eventstream/encode.h>
 #include <ggl/eventstream/types.h>
+#include <ggl/file.h>
 #include <ggl/log.h>
 #include <ggl/object.h>
 #include <ggl/socket.h>
@@ -27,21 +29,20 @@ pthread_mutex_t ggl_core_bus_client_payload_array_mtx
 static GglError interface_connect(GglBuffer interface, int *conn_fd) {
     assert(conn_fd != NULL);
 
-    uint8_t socket_path_buf
-        [GGL_INTERFACE_SOCKET_PREFIX_LEN + GGL_INTERFACE_NAME_MAX_LEN]
-        = GGL_INTERFACE_SOCKET_PREFIX;
-    GglByteVec socket_path
-        = { .buf = { .data = socket_path_buf,
-                     .len = GGL_INTERFACE_SOCKET_PREFIX_LEN },
-            .capacity = sizeof(socket_path_buf) };
-
+    // TODO: Remove once slash removed from all interface names
+    uint8_t socket_path_buf[GGL_INTERFACE_NAME_MAX_LEN + 2] = "./";
+    GglByteVec socket_path = { .buf = { .data = socket_path_buf, .len = 2 },
+                               .capacity = sizeof(socket_path_buf) };
     GglError ret = ggl_byte_vec_append(&socket_path, interface);
     if (ret != GGL_ERR_OK) {
         GGL_LOGE("core-bus-client", "Interface name too long.");
         return GGL_ERR_RANGE;
     }
 
-    return ggl_connect(socket_path.buf, conn_fd);
+    int dirfd = -1;
+    ggl_dir_open(GGL_STR(GGL_INTERFACE_SOCKET_PREFIX), O_PATH, &dirfd);
+
+    return ggl_connectat(dirfd, socket_path.buf, conn_fd);
 }
 
 static GglError payload_writer(GglBuffer *buf, void *payload) {

@@ -27,4 +27,7 @@ GglError ggl_write_exact(int fd, GglBuffer buf);
 /// Connect to a socket and return the fd
 GglError ggl_connect(GglBuffer path, int *fd);
 
+/// Connect to a socket relative too dirfd and return the fd
+GglError ggl_connectat(int dirfd, GglBuffer path, int *fd);
+
 #endif
